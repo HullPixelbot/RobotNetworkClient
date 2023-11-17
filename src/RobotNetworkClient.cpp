@@ -14,7 +14,7 @@ MQTT and WiFi settings are configured using the HullOS Network Client Config app
 
 #include <EEPROM.h>
 #include <SoftwareSerial.h>
-#define VERSION "1.0"
+#define VERSION "1.1"
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
@@ -43,14 +43,14 @@ struct WiFiDetails
 	char password[ACCESS_POINT_PASSWORD_LENGTH + 1];
 };
 
-struct Config
+struct Settings
 {
 	char Flag1;
 
 	WiFiDetails wifi[NO_OF_ACCESS_POINTS];
 
 	char Device_Name[DEVICE_NAME_LENGTH + 1];
-  char MQTT_Username[MQTT_USERNAME_LENGTH + 1];
+	char MQTT_Username[MQTT_USERNAME_LENGTH + 1];
 	char Azure_Endpoint[AZURE_ENDPOINT_LENGTH + 1];
 	char Azure_Key[AZURE_KEY_LENGTH + 1];
 
@@ -58,11 +58,14 @@ struct Config
 	char Flag2;
 };
 
-Config network_config;
+Settings network_config;
 
 #define EEPROM_SIZE 4096
 #define FLAG1 0x55
 #define FLAG2 0xAA
+
+void led_on();
+void led_off();
 
 void setup_led()
 {
@@ -90,39 +93,38 @@ void led_flip()
 		led_on();
 }
 
-
 #define DIGIT_FLASH_INTERVAL 400
 #define DIGIT_GAP 500
 
 void flashStatusLedDigits(int flashes)
 {
-    for (int i = 0; i < flashes; i++)
-    {
-        led_on();
-        delay(DIGIT_FLASH_INTERVAL);
-        led_off();
-        delay(DIGIT_FLASH_INTERVAL);
-    }
+	for (int i = 0; i < flashes; i++)
+	{
+		led_on();
+		delay(DIGIT_FLASH_INTERVAL);
+		led_off();
+		delay(DIGIT_FLASH_INTERVAL);
+	}
 }
 
 void flashStatusLed(int flashes)
 {
-    int tenPowers = 1;
+	int tenPowers = 1;
 
-    while (flashes > tenPowers)
-    {
-        tenPowers = tenPowers * 10;
-    }
+	while (flashes > tenPowers)
+	{
+		tenPowers = tenPowers * 10;
+	}
 
-    tenPowers = tenPowers / 10;
+	tenPowers = tenPowers / 10;
 
-    while (tenPowers > 0)
-    {
-        int digit = (flashes / tenPowers) % 10;
-        flashStatusLedDigits(digit);
-        tenPowers = tenPowers / 10;
-        delay(DIGIT_GAP);
-    }
+	while (tenPowers > 0)
+	{
+		int digit = (flashes / tenPowers) % 10;
+		flashStatusLedDigits(digit);
+		tenPowers = tenPowers / 10;
+		delay(DIGIT_GAP);
+	}
 }
 
 int version = 1;
@@ -144,7 +146,7 @@ void sendRobotCommand(String command)
 	Serial.print((char)0x0d);
 	Serial.print(command);
 	Serial.print((char)0x0d);
-  Serial.print((char)0x0a);
+	Serial.print((char)0x0a);
 }
 
 void sendRobotChar(char ch)
@@ -168,8 +170,8 @@ bool ledLit = false;
 
 unsigned long nextFlashTime = 0;
 
-char accessPointName[ACCESS_POINT_NAME_LENGTH+1];
-char accessPointPassword[ACCESS_POINT_PASSWORD_LENGTH+1];
+char accessPointName[ACCESS_POINT_NAME_LENGTH + 1];
+char accessPointPassword[ACCESS_POINT_PASSWORD_LENGTH + 1];
 // Leave room for the separator slash and the zero terminator
 char deviceEndpoint[AZURE_ENDPOINT_LENGTH + DEVICE_NAME_LENGTH + 2];
 char publishLocation[DEVICE_NAME_LENGTH + 25];
@@ -264,6 +266,8 @@ void updateClientStatus(int status)
 		break;
 	case ACCESS_POINT_CONNECTED:
 		Serial.println("Connected to access point OK");
+    Serial.print("MAC address:");
+    Serial.println(WiFi.macAddress());
 		break;
 	case ACCESS_POINT_CONNECT_FAILED:
 		Serial.println("Access point connection failed");
@@ -300,15 +304,15 @@ void list_access_points()
 	for (int i = 0; i < network_count; i++)
 	{
 		Serial.printf("%d: %s, Ch:%d (%ddBm) %s\n",
-			i + 1,
-			WiFi.SSID(i).c_str(),
-			WiFi.channel(i),
-			WiFi.RSSI(i),
-			WiFi.encryptionType(i) == ENC_TYPE_NONE ? "open" : "");
+					  i + 1,
+					  WiFi.SSID(i).c_str(),
+					  WiFi.channel(i),
+					  WiFi.RSSI(i),
+					  WiFi.encryptionType(i) == ENC_TYPE_NONE ? "open" : "");
 	}
 }
 
-void dumpString(char * str)
+void dumpString(char *str)
 {
 	Serial.print("String: ");
 	Serial.println(str);
@@ -324,7 +328,7 @@ void dumpString(char * str)
 
 char accessPointNameDump[ACCESS_POINT_NAME_LENGTH];
 
-// finds an access point and copies the ap name and password 
+// finds an access point and copies the ap name and password
 int findAccessPointName()
 {
 	int network_count = WiFi.scanNetworks();
@@ -341,24 +345,23 @@ int findAccessPointName()
 	{
 		strcpy(accessPointNameDump, WiFi.SSID(i).c_str());
 
-		//if (!robotConnected)
+		// if (!robotConnected)
 		//{
 		//	Serial.print("Checking: ");
 		//	dumpString(accessPointNameDump);
-		//}
+		// }
 
 		for (int i = 0; i < network_count; i++)
 		{
-			//if (!robotConnected)
+			// if (!robotConnected)
 			//{
 			//	Serial.print("  With : ");
 			//	dumpString(network_config.wifi[i].name);
-			//}
+			// }
 			int cmp = strcmp(network_config.wifi[i].name, accessPointNameDump);
 
-			//Serial.print("Compare: ");
-			//Serial.println(cmp);
-
+			// Serial.print("Compare: ");
+			// Serial.println(cmp);
 
 			if (cmp == 0)
 			{
@@ -371,13 +374,18 @@ int findAccessPointName()
 	return NO_ACCESS_POINT_NAMES_MATCH_CONFIG;
 }
 
+ uint8_t mac[6] {0xA8, 0xD9, 0xB3, 0x0D, 0xAA, 0xCE};    
+
 int connectToAP()
 {
 	WiFi.begin(accessPointName, accessPointPassword);
 
+  // wifi_set_macaddr(0, const_cast<uint8*>(mac));   //This line changes MAC adderss of ESP8266
+
 	int tryCount = 0;
 
-	while (WiFi.status() != WL_CONNECTED && tryCount < WIFI_TRY_LIMIT) {
+	while (WiFi.status() != WL_CONNECTED && tryCount < WIFI_TRY_LIMIT)
+	{
 		tryCount++;
 		updateStatusDisplay(CONNECTING_TO_ACCESS_POINT);
 		delay(500);
@@ -395,36 +403,34 @@ int connectToAP()
 	}
 }
 
-Client* espClient = NULL;
+Client *espClient = NULL;
 
-PubSubClient* mqttPubSubClient = NULL;
+PubSubClient *mqttPubSubClient = NULL;
 
 int mqttPort;
 
 void setupPubSubClient(bool secure)
 {
-  if(mqttPubSubClient!=NULL)
-    return;
-    
-  if (secure)
-  {
-    espClient = new WiFiClientSecure();
-    mqttPort=8883;
-  }
-  else
-  {
-    espClient = new WiFiClient();
-    mqttPort=1883;
-  }
-  
-  mqttPubSubClient = new PubSubClient(*espClient);
-}
+	if (mqttPubSubClient != NULL)
+		return;
 
+	if (secure)
+	{
+		espClient = new WiFiClientSecure();
+		mqttPort = 8883;
+	}
+	else
+	{
+		espClient = new WiFiClient();
+		mqttPort = 1883;
+	}
+
+	mqttPubSubClient = new PubSubClient(*espClient);
+}
 
 int connectToWifi()
 {
 	int reply;
-
 
 	for (int i = 0; i < NO_OF_ACCESS_POINTS; i++)
 	{
@@ -448,28 +454,27 @@ int connectToWifi()
 	return ACCESS_POINT_CONNECT_FAILED;
 }
 
-bool check_for_Azure(const char * s1)
+bool check_for_Azure(const char *s1)
 {
-  return strstr(s1, "azure") != NULL;
+	return strstr(s1, "azure") != NULL;
 }
-
 
 char message[50];
 
-void callback(char* topic, byte* payload, unsigned int length);
+void callback(char *topic, byte *payload, unsigned int length);
 
 int connect_to_mqtt()
 {
 
-  setupPubSubClient(check_for_Azure(network_config.Azure_Endpoint));
-  
+	setupPubSubClient(check_for_Azure(network_config.Azure_Endpoint));
+
 	mqttPubSubClient->setServer(network_config.Azure_Endpoint, mqttPort);
 	mqttPubSubClient->setCallback(callback);
 
 	strcpy(deviceEndpoint, network_config.Azure_Endpoint);
 
-//	strcat(deviceEndpoint, "/");
-//	strcat(deviceEndpoint, network_config.Device_Name);
+	//	strcat(deviceEndpoint, "/");
+	//	strcat(deviceEndpoint, network_config.Device_Name);
 
 	strcpy(publishLocation, "devices/");
 	strcat(publishLocation, network_config.Device_Name);
@@ -479,7 +484,7 @@ int connect_to_mqtt()
 	strcat(subscribeLocation, network_config.Device_Name);
 	strcat(subscribeLocation, "/messages/devicebound/#");
 
-//  Serial.printf("Name: %s Endpoint: %s Key: %s\n", network_config.Device_Name, network_config.MQTT_Username, network_config.Azure_Key);
+	//  Serial.printf("Name: %s Endpoint: %s Key: %s\n", network_config.Device_Name, network_config.MQTT_Username, network_config.Azure_Key);
 
 	if (!robotConnected)
 	{
@@ -493,7 +498,8 @@ int connect_to_mqtt()
 		Serial.println(subscribeLocation);
 	}
 
-	if (mqttPubSubClient->connect(network_config.Device_Name,  network_config.MQTT_Username, network_config.Azure_Key)) {
+	if (mqttPubSubClient->connect(network_config.Device_Name, network_config.MQTT_Username, network_config.Azure_Key))
+	{
 		mqttPubSubClient->publish(publishLocation, network_config.Device_Name);
 		// ... and resubscribe
 		mqttPubSubClient->subscribe(subscribeLocation);
@@ -540,32 +546,31 @@ bool connect_to_network()
 #define INPUT_BUFFER_SIZE 1000
 
 char buffer[INPUT_BUFFER_SIZE];
-char * bufferPos = buffer;
-const char * bufferLimit = buffer + INPUT_BUFFER_SIZE;
+char *bufferPos = buffer;
+const char *bufferLimit = buffer + INPUT_BUFFER_SIZE;
 
 void startBuffering()
 {
 	bufferPos = buffer;
 }
 
-
-
 bool startsWith(const char *pre, const char *str)
 {
-  int preLen=strlen(pre);
-  int strLen=strlen(pre);
-  
-  if(preLen>strLen) return false;
+	int preLen = strlen(pre);
+	int strLen = strlen(pre);
 
-  while(preLen>0)
-  {
-    if(*pre != *str)
-      return false;
-    pre++;
-    str++;
-    preLen--;
-  }
-  return true;
+	if (preLen > strLen)
+		return false;
+
+	while (preLen > 0)
+	{
+		if (*pre != *str)
+			return false;
+		pre++;
+		str++;
+		preLen--;
+	}
+	return true;
 }
 
 void start_eeprom()
@@ -575,7 +580,7 @@ void start_eeprom()
 
 void load_config_from_eeprom()
 {
-	char * config_byte = (char *)&network_config;
+	char *config_byte = (char *)&network_config;
 
 	for (int i = 0; i < sizeof(network_config); i++)
 	{
@@ -585,7 +590,7 @@ void load_config_from_eeprom()
 
 void store_config_in_eeprom()
 {
-	char * config_byte = (char *)&network_config;
+	char *config_byte = (char *)&network_config;
 
 	for (int i = 0; i < sizeof(network_config); i++)
 	{
@@ -631,7 +636,7 @@ void demo_network_config()
 
 	strcpy(network_config.Device_Name, "Quick");
 	strcpy(network_config.MQTT_Username, "Deployment");
-  strcpy(network_config.Azure_Endpoint, "To");
+	strcpy(network_config.Azure_Endpoint, "To");
 	strcpy(network_config.Azure_Key, "A Robot");
 	store_config_in_eeprom();
 }
@@ -643,7 +648,7 @@ void send_config_to_serial()
 	for (int i = 0; i < NO_OF_ACCESS_POINTS; i++)
 	{
 		Serial.println(network_config.wifi[i].name);
-		//		Serial.println(network_config.wifi[i].password);
+			Serial.println(network_config.wifi[i].password);
 		if (network_config.wifi[i].password[0] != 0)
 			Serial.println(EMPTY_PASSWORD);
 		else
@@ -651,8 +656,8 @@ void send_config_to_serial()
 	}
 
 	Serial.println(network_config.Device_Name);
-  Serial.println(network_config.MQTT_Username);
-  Serial.println(network_config.Azure_Endpoint);
+	Serial.println(network_config.MQTT_Username);
+	Serial.println(network_config.Azure_Endpoint);
 
 	if (network_config.Azure_Key[0] != 0)
 		Serial.println(EMPTY_PASSWORD);
@@ -660,15 +665,14 @@ void send_config_to_serial()
 		Serial.println();
 }
 
-
-// If we get more characters than the buffer can hold we ignore those and 
+// If we get more characters than the buffer can hold we ignore those and
 // send a fail report when we get the line ending
 
-bool getLine(char * dest, int size, int timeoutInMilliseconds)
+bool getLine(char *dest, int size, int timeoutInMilliseconds)
 {
 	int count = 1;
 
-	while (timeoutInMilliseconds>0)
+	while (timeoutInMilliseconds > 0)
 	{
 		while (Serial.available())
 		{
@@ -703,7 +707,7 @@ bool read_config_from_serial(int timeout)
 {
 	network_config.Flag1 = 0;
 
-	char password_buffer[AZURE_KEY_LENGTH+1];
+	char password_buffer[AZURE_KEY_LENGTH + 1];
 
 	for (int i = 0; i < NO_OF_ACCESS_POINTS; i++)
 	{
@@ -721,9 +725,9 @@ bool read_config_from_serial(int timeout)
 	if (!getLine(network_config.Device_Name, DEVICE_NAME_LENGTH, timeout))
 		return false;
 
-  if (!getLine(network_config.MQTT_Username, MQTT_USERNAME_LENGTH, timeout))
-    return false;
-	
+	if (!getLine(network_config.MQTT_Username, MQTT_USERNAME_LENGTH, timeout))
+		return false;
+
 	if (!getLine(network_config.Azure_Endpoint, AZURE_ENDPOINT_LENGTH, timeout))
 		return false;
 
@@ -733,7 +737,7 @@ bool read_config_from_serial(int timeout)
 	// If the password has been changed - update it
 	if (strcmp(EMPTY_PASSWORD, password_buffer) != 0)
 		strcpy(network_config.Azure_Key, password_buffer);
-	
+
 	network_config.Flag1 = FLAG1;
 	network_config.Flag2 = FLAG2;
 
@@ -753,8 +757,7 @@ void setup_config()
 	}
 }
 
-
-void processCommand(char * command)
+void processCommand(char *command)
 {
 	if (strcmp(command, "*IV") == 0)
 	{
@@ -807,15 +810,14 @@ void processCommand(char * command)
 		connect_to_network();
 		return;
 	}
-
-	sendRobotCommand(command);
 }
 
-void callback(char* topic, byte* payload, unsigned int length) 
+void callback(char *topic, byte *payload, unsigned int length)
 {
 	sendRobotChar((char)0x0d);
 
-	for (int i = 0; i < length; i++) {
+	for (int i = 0; i < length; i++)
+	{
 		sendRobotChar((char)payload[i]);
 	}
 
@@ -825,15 +827,13 @@ void callback(char* topic, byte* payload, unsigned int length)
 	led_flip();
 }
 
-
-void processLine(char * command)
+void processLine(char *command)
 {
 	if (robotConnected)
 		mqttPubSubClient->publish(publishLocation, command);
 	else
 		processCommand(command);
 }
-
 
 void bufferChar(char ch)
 {
@@ -852,7 +852,6 @@ void bufferChar(char ch)
 		bufferPos++;
 	}
 }
-
 
 void processIncomingChars()
 {
@@ -906,23 +905,23 @@ bool readLines(int noOfLines, int timeoutInMilliseconds)
 
 bool findRobot()
 {
-  led_on();
-  // Flush out any received messages
-  Serial.flush();
+	led_on();
+	// Flush out any received messages
+	Serial.flush();
 
 	// Give the motor controller time to boot
 	delay(1000);
-  
-  led_off();
 
-  delay(1000);
-  
+	led_off();
+
+	delay(1000);
+
 	// Stop a program if there is one
 	sendRobotCommand("*RH");
 
-  delay(200);
+	delay(200);
 
- 	// Ask the robot for version information
+	// Ask the robot for version information
 	sendRobotCommand("*IV");
 
 	if (!readLIne(RESPONSE_TIMEOUT))
@@ -930,16 +929,13 @@ bool findRobot()
 
 	if (startsWith("HullOS", buffer))
 	{
-    Serial.println("found a robot");
 		return true;
 	}
 
- Serial.println("Not a match");
+	flashStatusLed(5);
 
-  flashStatusLed(5);
+	delay(1000);
 
-  delay(1000);
-  
 	return false;
 }
 
@@ -949,12 +945,12 @@ void startRobot()
 	{
 		robotConnected = true;
 		connect_to_network();
-    flashStatusLed(1);
+		flashStatusLed(1);
 	}
- else
- {
-    flashStatusLed(2);
- }
+	else
+	{
+		flashStatusLed(2);
+	}
 }
 
 void setup()
@@ -973,13 +969,15 @@ void setup()
 	startBuffering();
 }
 
-void loop() {
+void loop()
+{
 
 	processIncomingChars();
 
 	if (mqttLive)
 	{
-		if (!mqttPubSubClient->connected()) {
+		if (!mqttPubSubClient->connected())
+		{
 			int reply = connect_to_mqtt();
 			updateStatusDisplay(reply);
 		}
